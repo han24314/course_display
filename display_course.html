@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>课程表</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 48px;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    background: #f4f6fa;
+    color: #1f2733;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 18px;
+    letter-spacing: 1px;
+  }
+  /* Tab 栏 */
+  .tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 2px solid #e2e7f0;
+    margin-bottom: 20px;
+  }
+  .tab-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 10px 22px;
+    font-size: 15px;
+    font-family: inherit;
+    color: #6b7688;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    border-radius: 8px 8px 0 0;
+    transition: color .18s, background .18s, border-color .18s;
+  }
+  .tab-btn:hover { background: rgba(59,110,230,.07); color: #2f4a86; }
+  .tab-btn.active {
+    color: #2f4a86;
+    font-weight: 600;
+    border-bottom-color: #3b6ee6;
+    background: rgba(59,110,230,.09);
+  }
+  .panel { display: none; }
+  .panel.active { display: block; animation: fade .22s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* 表格 */
+  .table-box {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 14px rgba(31,39,51,.08);
+    overflow: auto;
+    padding: 4px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 1040px;
+    table-layout: fixed;
+  }
+  th, td {
+    border: 1px solid #e4e9f2;
+    text-align: center;
+    vertical-align: middle;
+    padding: 6px 4px;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  thead th {
+    background: #eef3fd;
+    color: #2f4a86;
+    font-size: 14px;
+    font-weight: 600;
+    height: 42px;
+  }
+  thead th.corner { background: #e6edfb; }
+  th.sec {
+    background: #f6f8fc;
+    color: #55607a;
+    width: 76px;
+    font-weight: 600;
+  }
+  /* 节次列：上行节次数字，下行上下课时间 */
+  th.sec .s-no { font-size: 13px; line-height: 1.3; }
+  th.sec .s-tm {
+    font-size: 10px;
+    line-height: 1.3;
+    font-weight: 500;
+    color: #8a93a6;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  td { background: #fff; height: 46px; }
+  td.course {
+    padding: 6px 3px;
+    background: linear-gradient(180deg, #f7faff 0%, #eef4ff 100%);
+  }
+  .c-name {
+    font-weight: 600;
+    font-size: 12.5px;
+    color: #1c3566;
+    word-break: break-all;
+  }
+  .c-room { color: #4a5468; margin-top: 1px; }
+  /* 授课周次行（第 3 行）：与下方时间段行用字号/颜色区分主次 */
+  .c-week {
+    font-size: 11px;
+    font-weight: 500;
+    margin-top: 1px;
+    color: #52628c;
+    font-variant-numeric: tabular-nums;
+  }
+  .c-date {
+    font-size: 10.5px;
+    margin-top: 1px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: #7c879b;
+  }
+  /* 时间段状态着色：绿=当前进行中 / 灰=尚未开始 / 灰+删除线=已结束
+     （用 !important 确保覆盖各 tab 内的局部文字颜色规则） */
+  .st-now { color: #16a34a !important; font-weight: 600; }
+  .st-past { color: #9aa3b2 !important; text-decoration: line-through !important; }
+  .st-future { color: #9aa3b2 !important; }
+  .c-more,
+  .item .info .times .tm.c-more {
+    color: #a9b2c0 !important;
+    font-size: 12px;
+    line-height: 1.1;
+    margin-top: 1px;
+    letter-spacing: 1px;
+  }
+  /* 查看详情入口 */
+  .detail-link {
+    display: inline-block;
+    color: #3b6ee6;
+    cursor: pointer;
+    border-bottom: 1px dashed rgba(59,110,230,.5);
+    transition: color .15s, border-color .15s;
+  }
+  .detail-link:hover { color: #2f4a86; border-bottom-color: #2f4a86; }
+  .c-detail { margin-top: 4px; font-size: 11px; }
+  .item .info .detail-link { margin-top: 10px; font-size: 12.5px; }
+
+  /* 详情浮窗 */
+  .modal-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(23,30,45,.45);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: auto;
+    padding: 40px 16px;
+    z-index: 999;
+  }
+  .modal-mask.show { display: flex; }
+  .modal-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    align-items: flex-start;
+    width: 100%;
+    max-width: 1120px;
+  }
+  .modal-legend {
+    flex: 0 0 100%;
+    text-align: center;
+    color: #eef3fd;
+    font-size: 12.5px;
+    margin-bottom: 2px;
+  }
+  .modal-legend span { margin: 0 8px; }
+  .modal-legend .lg-now { color: #6ee7a8; }
+  .modal-legend .lg-past { color: #cbd3e1; text-decoration: line-through; }
+  .modal-legend .lg-future { color: #cbd3e1; }
+  .modal-card {
+    position: relative;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(15,23,42,.28);
+    padding: 20px 22px;
+    width: 340px;
+    animation: pop .18s ease;
+  }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+  .modal-card h3 {
+    margin: 0 0 14px;
+    padding-right: 30px;
+    font-size: 15px;
+    color: #2f4a86;
+  }
+  .modal-card .row {
+    display: flex;
+    gap: 6px;
+    font-size: 13px;
+    color: #3c4557;
+    line-height: 1.75;
+    margin-bottom: 3px;
+  }
+  .modal-card .row .k { flex: 0 0 80px; color: #7c879b; }
+  .modal-card .row .v { flex: 1; word-break: break-all; }
+  /* 课程时间段：多行逐条展示，标签列定宽，第二行起与首行数值左对齐 */
+  .modal-card .row .v .tv { display: block; line-height: 1.75; }
+  .modal-card .row .v .tv + .tv { margin-top: 2px; }
+  .modal-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 50%;
+    background: #f0f3f9;
+    color: #6b7688;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .modal-close:hover { background: #e2e8f4; color: #2f4a86; }
+
+  /* 当日课程 */
+  .today-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin: 4px 0 16px;
+    flex-wrap: wrap;
+  }
+  .today-date { font-size: 20px; font-weight: 600; color: #1f2733; }
+  .today-week { font-size: 14px; color: #6b7688; }
+  .today-count {
+    margin-left: auto;
+    font-size: 13px;
+    color: #2f4a86;
+    background: #eef3fd;
+    border-radius: 999px;
+    padding: 4px 14px;
+  }
+  .list { display: flex; flex-direction: column; gap: 12px; }
+  .item {
+    display: flex;
+    align-items: stretch;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(31,39,51,.07);
+    overflow: hidden;
+  }
+  .item .no {
+    flex: 0 0 92px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, #3b6ee6, #2f4a86);
+    color: #fff;
+    padding: 14px 6px;
+  }
+  .item .no .lbl { font-size: 11px; opacity: .85; }
+  .item .no .num { font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .item .info { flex: 1; padding: 14px 18px; }
+  .item .info .nm { font-size: 16px; font-weight: 600; color: #1c3566; }
+  .item .info .addr { margin-top: 6px; font-size: 13.5px; color: #55607a; }
+  .item .info .times { margin-top: 6px; }
+  .item .info .times .tm {
+    font-size: 13px;
+    color: #7c879b;
+    line-height: 1.75;
+    font-variant-numeric: tabular-nums;
+  }
+  /* 授课周次行：与下方时间段行用字号/颜色区分主次 */
+  .item .info .wk {
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #52628c;
+    line-height: 1.6;
+    font-variant-numeric: tabular-nums;
+  }
+  .empty {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(31,39,51,.07);
+    padding: 56px 20px;
+    text-align: center;
+    color: #6b7688;
+  }
+  .empty .ico { font-size: 40px; line-height: 1; margin-bottom: 14px; }
+  .empty .t1 { font-size: 17px; font-weight: 600; color: #2f4a86; margin-bottom: 8px; }
+  .empty .t2 { font-size: 13.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>课程表</h1>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-target="panel-schedule">课程表</button>
+    <button class="tab-btn" data-target="panel-today">当日课程表</button>
+  </div>
+
+  <div class="panel active" id="panel-schedule">
+    <div class="table-box">
+      <table id="schedule-table">
+        <thead>
+          <tr id="head-row">
+            <th class="corner"></th>
+          </tr>
+        </thead>
+        <tbody id="schedule-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-today">
+    <div class="today-head">
+      <span class="today-date" id="today-date"></span>
+      <span class="today-week" id="today-week"></span>
+      <span class="today-count" id="today-count"></span>
+    </div>
+    <div id="today-content"></div>
+  </div>
+</div>
+
+<!-- 课程详情浮窗容器（同名课程一周多次授课时，内部渲染多个独立浮窗） -->
+<div class="modal-mask" id="detail-modal">
+  <div class="modal-cards" id="modal-cards"></div>
+</div>
+
+<script>
+/* ================= 数据源（Course 实例） ================= */
+const COURSES = [
+  { course_name: '产汇流理论',                     teacher_name: '白桦',       classroom: '北B309', duration: [5,7,8,13,14,15,16,17],                    course_index: [1,2], course_day: 'Mon' },
+  { course_name: '新时代中国特色社会主义理论与实践', teacher_name: '卞桂平',     classroom: '北C103', duration: [1,2,3,4,5,6,7,8],                          course_index: [1,2], course_day: 'Sat' },
+  { course_name: '水质模型',                       teacher_name: '王寅',       classroom: '北B311', duration: [5,7,8,13,14,15,16,17],                    course_index: [7,8], course_day: 'Mon' },
+  { course_name: '学术交流英语',                   teacher_name: '宋平锋',     classroom: '北B310', duration: [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18], course_index: [1,2], course_day: 'Tue' },
+  { course_name: '计算水力学',                     teacher_name: '张强/姚莉',  classroom: '北B309', duration: [5,7,8,13,14,15,16,17],                    course_index: [5,6], course_day: 'Tue' },
+  { course_name: '数理统计',                       teacher_name: '曹寒问',     classroom: '北B309', duration: [3,4,5,6,7,8,13,14],                        course_index: [7,8], course_day: 'Tue' },
+  { course_name: '数值分析及其工程应用',           teacher_name: '张晓航',     classroom: '北B311', duration: [3,4,5,6,7,8,13,14],                        course_index: [3,4], course_day: 'Wed' },
+  { course_name: '水质模型',                       teacher_name: '王寅',       classroom: '北B311', duration: [5,7,8,13,14,15,16,17],                    course_index: [5,6], course_day: 'Wed' },
+  { course_name: '自然辩证法',                     teacher_name: '尹晶晶',     classroom: '北C105', duration: [1,2,3,4,5,6,7,8],                          course_index: [1,2], course_day: 'Thu' },
+  { course_name: '新时代中国特色社会主义理论与实践', teacher_name: '卞桂平',     classroom: '北C101', duration: [3,4,5,6,7,8,9,10,11],                          course_index: [3,4], course_day: 'Thu' },
+  { course_name: '数理统计',                       teacher_name: '曹寒问',     classroom: '北B309', duration: [3,4,5,6,7,8,13,14],                        course_index: [5,6], course_day: 'Thu' },
+  { course_name: '有限元方法论',                   teacher_name: '张阳',       classroom: '北B309', duration: [5,7,8,13,14,15,16,17],                    course_index: [7,8], course_day: 'Thu' },
+  { course_name: '产汇流理论',                     teacher_name: '白桦',       classroom: '北B306', duration: [5,7,8,13,14,15,16,17],                    course_index: [1,2], course_day: 'Fri' },
+  { course_name: '数值分析及其工程应用',           teacher_name: '张晓航',     classroom: '北B311', duration: [3,4,5,6,7,8,13,14],                        course_index: [3,4], course_day: 'Fri' },
+  { course_name: '有限元方法论',                   teacher_name: '张阳',       classroom: '北B309', duration: [5,7,8,13,14,15,16,17],                    course_index: [5,6], course_day: 'Fri' },
+  { course_name: '计算水力学',                     teacher_name: '张强/姚莉',  classroom: '北B309', duration: [5,7,8,13,14,15,16,17],                    course_index: [7,8], course_day: 'Fri' }
+];
+
+/* ================= 常量 ================= */
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_CN = { Mon: '星期一', Tue: '星期二', Wed: '星期三', Thu: '星期四', Fri: '星期五', Sat: '星期六', Sun: '星期日' };
+const SECTION_COUNT = 11;
+/* 节次作息时间（第 1~11 节） */
+const SECTION_TIMES = [
+  '8:30-9:10', '9:15-9:55', '10:15-10:55', '11:00-11:40',
+  '14:00-14:40', '14:45-15:25', '15:45-16:25', '16:30-17:10',
+  '19:00-19:40', '19:45-20:25', '20:30-21:10'
+];
+
+/* ===== 周次 -> 日期 换算 =====
+   第 1 周 = 8月30日 - 9月6日
+   第 n 周起始日 = 8月30日 + 7*(n-1) 天，结束日 = 起始日 + 7 天 */
+const TERM_START = new Date(2026, 7, 30);   // 8 月 30 日（月份 0-based）
+const WEEK_SPAN = 7;
+
+function weekStartDate(n) {
+  return new Date(TERM_START.getFullYear(), TERM_START.getMonth(), TERM_START.getDate() + WEEK_SPAN * (n - 1));
+}
+function weekEndDate(n) {
+  return new Date(TERM_START.getFullYear(), TERM_START.getMonth(), TERM_START.getDate() + WEEK_SPAN * n);
+}
+function pad2(n) { return String(n).padStart(2, '0'); }
+/* 中文短日期：9月27日 */
+function fmtCN(d) {
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+}
+/* 中文全日期：2026年09月27日 */
+function fmtFull(d) {
+  return d.getFullYear() + '年' + pad2(d.getMonth() + 1) + '月' + pad2(d.getDate()) + '日';
+}
+
+/* 连续周次合并为一个时间段，不连续的周次各自成段，返回时间段对象数组（按时间先后排序）
+   例：[5,7,8,13,14,15,16,17] -> [{start:2026-09-27,end:2026-10-04}, {start:2026-10-11,end:2026-10-25}, {start:2026-11-22,end:2026-12-27}] */
+function dateRanges(weeks) {
+  const arr = Array.from(new Set(weeks)).sort((a, b) => a - b);
+  if (!arr.length) return [];
+  const segs = [];
+  let start = arr[0], prev = arr[0];
+  for (let i = 1; i < arr.length; i++) {
+    if (arr[i] === prev + 1) { prev = arr[i]; }
+    else { segs.push([start, prev]); start = prev = arr[i]; }
+  }
+  segs.push([start, prev]);
+  return segs.map(seg => ({ from: seg[0], to: seg[1], start: weekStartDate(seg[0]), end: weekEndDate(seg[1]) }));
+}
+
+/* 单个时间段的周次文本：6、7、8 -> "6-8"；13 -> "13" */
+function rangeWeeks(r) { return r.from === r.to ? String(r.from) : (r.from + '-' + r.to); }
+/* 整门课的周次文本（连续周次合并、多段用「、」分隔）：[6,7,8,13,14,15,16,17] -> "6-8、13-17 周" */
+function weekText(weeks) {
+  const ranges = dateRanges(weeks);
+  if (!ranges.length) return '';
+  return ranges.map(rangeWeeks).join('、') + ' 周';
+}
+
+function rangeCN(r) { return fmtCN(r.start) + '-' + fmtCN(r.end); }
+function rangeFull(r) { return fmtFull(r.start) + '-' + fmtFull(r.end); }
+
+/* 时间段状态（按当前日期，含首尾）：
+   now    = 当前日期落在区间内        -> 绿色
+   past   = 区间结束日早于今天        -> 灰色 + 删除线
+   future = 区间起始日晚于今天        -> 灰色（无删除线） */
+const TODAY = (function () { const t = new Date(); t.setHours(0, 0, 0, 0); return t; })();
+function rangeStatus(r) {
+  if (TODAY >= r.start && TODAY <= r.end) return 'now';
+  if (r.end < TODAY) return 'past';
+  return 'future';
+}
+const STATUS_CLASS = { now: 'st-now', past: 'st-past', future: 'st-future' };
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+/* ================= Tab 1：课程表 ================= */
+function renderTable() {
+  const headRow = document.getElementById('head-row');
+  DAYS.forEach(d => {
+    const th = document.createElement('th');
+    th.textContent = d;
+    headRow.appendChild(th);
+  });
+
+  // 构建 11 节 x 7 天 网格
+  const grid = Array.from({ length: SECTION_COUNT }, () => new Array(DAYS.length).fill(null));
+  COURSES.forEach(c => {
+    const col = DAYS.indexOf(c.course_day);
+    if (col < 0) return;
+    const idx = c.course_index.slice().sort((a, b) => a - b);
+    idx.forEach((sec, i) => {
+      const r = sec - 1;
+      if (r < 0 || r >= SECTION_COUNT) return;
+      grid[r][col] = { course: c, first: i === 0, span: idx.length, sec: sec };
+    });
+  });
+
+  const tbody = document.getElementById('schedule-body');
+  grid.forEach((row, r) => {
+    const tr = document.createElement('tr');
+    const th = document.createElement('th');
+    th.className = 'sec';
+    // 第一列两行：上行节次数字，下行上下课时间
+    th.innerHTML =
+      '<div class="s-no">' + (r + 1) + '</div>' +
+      '<div class="s-tm">' + SECTION_TIMES[r] + '</div>';
+    tr.appendChild(th);
+
+    row.forEach(cell => {
+      if (!cell) {                      // 空课
+        tr.appendChild(document.createElement('td'));
+      } else if (cell.first) {          // 起始格，纵向合并
+        const td = document.createElement('td');
+        td.className = 'course';
+        td.rowSpan = cell.span;
+        const c = cell.course;
+        const ranges = dateRanges(c.duration);
+        // 第 3 行：授课周次（连续周次合并、多段「、」分隔）；第 4 行：只展示最早的一个时间段，有多段时补一行省略号
+        const weekHtml = ranges.length ? '<div class="c-week">' + escapeHtml(weekText(c.duration)) + '</div>' : '';
+        let timeHtml = '';
+        if (ranges.length) {
+          timeHtml += '<div class="c-date ' + STATUS_CLASS[rangeStatus(ranges[0])] + '">' +
+                      escapeHtml(rangeCN(ranges[0])) + '</div>';
+        }
+        if (ranges.length > 1) { timeHtml += '<div class="c-more">...</div>'; }
+        td.innerHTML =
+          '<div class="c-name">' + escapeHtml(c.course_name) + '-' + escapeHtml(c.teacher_name) + '</div>' +
+          '<div class="c-room">' + escapeHtml(c.classroom) + '</div>' +
+          weekHtml +
+          timeHtml +
+          '<span class="detail-link c-detail" data-course="' + escapeHtml(c.course_name) + '" data-idx="' + COURSES.indexOf(c) + '">查看详情</span>';
+        tr.appendChild(td);
+      }
+      // 被合并覆盖的格子：跳过不渲染
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+/* ================= Tab 2：当日课程表 ================= */
+function renderToday() {
+  const now = new Date();
+  // JS: 0 = Sun ... 6 = Sat  ->  映射为 DAYS 索引
+  const todayKey = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][now.getDay()];
+
+  document.getElementById('today-date').textContent =
+    now.getFullYear() + '年' + String(now.getMonth() + 1).padStart(2, '0') + '月' +
+    String(now.getDate()).padStart(2, '0') + '日';
+  document.getElementById('today-week').textContent = DAY_CN[todayKey];
+
+  const todays = COURSES
+    .filter(c => c.course_day === todayKey)
+    .sort((a, b) => Math.min(...a.course_index) - Math.min(...b.course_index));
+
+  const countEl = document.getElementById('today-count');
+  const box = document.getElementById('today-content');
+
+  if (!todays.length) {
+    countEl.textContent = '今日无课';
+    box.innerHTML =
+      '<div class="empty">' +
+        '<div class="ico">☕</div>' +
+        '<div class="t1">今天没有课程安排</div>' +
+        '<div class="t2">' + DAY_CN[todayKey] + '，好好休息一下吧～ 可切换到「课程表」查看完整安排</div>' +
+      '</div>';
+    return;
+  }
+
+  countEl.textContent = '共 ' + todays.length + ' 门课程';
+  let html = '<div class="list">';
+  todays.forEach(c => {
+    const idx = c.course_index.slice().sort((a, b) => a - b);
+    const ranges = dateRanges(c.duration);
+    // 授课周次（连续周次合并、多段「、」分隔）；时间段只展示最早的一个，有多段时补一行省略号
+    const weekHtml = ranges.length ? '<div class="wk">' + escapeHtml(weekText(c.duration)) + '</div>' : '';
+    let timeHtml = '';
+    if (ranges.length) {
+      timeHtml += '<div class="tm ' + STATUS_CLASS[rangeStatus(ranges[0])] + '">' +
+                  escapeHtml(rangeCN(ranges[0])) + '</div>';
+    }
+    if (ranges.length > 1) { timeHtml += '<div class="tm c-more">...</div>'; }
+    html +=
+      '<div class="item">' +
+        '<div class="no">' +
+          '<div class="lbl">节次</div>' +
+          '<div class="num">' + idx.join('、') + '</div>' +
+        '</div>' +
+        '<div class="info">' +
+          '<div class="nm">' + escapeHtml(c.course_name) + '-' + escapeHtml(c.teacher_name) + '</div>' +
+          '<div class="addr">' + escapeHtml(c.classroom) + '</div>' +
+          weekHtml +
+          '<div class="times">' + timeHtml + '</div>' +
+          '<span class="detail-link" data-course="' + escapeHtml(c.course_name) + '" data-idx="' + COURSES.indexOf(c) + '">查看详情</span>' +
+        '</div>' +
+      '</div>';
+  });
+  html += '</div>';
+  box.innerHTML = html;
+}
+
+/* ================= Tab 切换 ================= */
+function initTabs() {
+  const btns = document.querySelectorAll('.tab-btn');
+  btns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      btns.forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.target).classList.add('active');
+    });
+  });
+}
+
+/* ================= 课程详情浮窗 ================= */
+const modal = document.getElementById('detail-modal');
+const modalCards = document.getElementById('modal-cards');
+
+/* 点击某单元格时，只取该单元格对应的那一条课程安排（Course 实例） */
+function courseByIndex(i) {
+  const n = Number(i);
+  return (Number.isInteger(n) && n >= 0 && n < COURSES.length) ? COURSES[n] : null;
+}
+
+function openDetail(courseIdx) {
+  const c = courseByIndex(courseIdx);
+  if (!c) return;
+
+  let html =
+    '<div class="modal-legend">' +
+      '<span class="lg-now">绿色 = 当前进行中</span>｜' +
+      '<span class="lg-past">灰色删除线 = 已结束</span>｜' +
+      '<span class="lg-future">灰色 = 尚未开始</span>' +
+    '</div>';
+
+  const idx = c.course_index.slice().sort((a, b) => a - b);
+  const idxText = idx.map(n => '第' + n + '节（' + SECTION_TIMES[n - 1] + '）').join('、');
+
+  // 课程时间段：多行逐条展示，每行一个时间段，各行按当前日期单独着色
+  const ranges = dateRanges(c.duration);
+  let timeHtml = '';
+  if (ranges.length) {
+    timeHtml = ranges.map(r =>
+      '<span class="tv ' + STATUS_CLASS[rangeStatus(r)] + '">' +
+        escapeHtml('第' + rangeWeeks(r) + '周｜' + rangeFull(r)) +
+      '</span>'
+    ).join('');
+  } else {
+    timeHtml = '<span class="tv">—</span>';
+  }
+
+  // 字段顺序：课程名称、授课教师、授课地点、课程时间段、课次、授课日
+  const block =
+    '<div class="modal-block">' +
+      '<div class="row"><span class="k">课程名称：</span><span class="v">' + escapeHtml(c.course_name) + '</span></div>' +
+      '<div class="row"><span class="k">授课教师：</span><span class="v">' + escapeHtml(c.teacher_name) + '</span></div>' +
+      '<div class="row"><span class="k">授课地点：</span><span class="v">' + escapeHtml(c.classroom) + '</span></div>' +
+      '<div class="row"><span class="k">课程时间段：</span><span class="v">' + timeHtml + '</span></div>' +
+      '<div class="row"><span class="k">课次：</span><span class="v">' + escapeHtml(idxText) + '</span></div>' +
+      '<div class="row"><span class="k">授课日：</span><span class="v">' + DAY_CN[c.course_day] + '</span></div>' +
+    '</div>';
+
+  html +=
+    '<div class="modal-card">' +
+      '<button class="modal-close" data-close="1" title="关闭">✕</button>' +
+      block +
+    '</div>';
+
+  modalCards.innerHTML = html;
+  modal.classList.add('show');
+}
+
+function closeDetail() {
+  modal.classList.remove('show');
+  modalCards.innerHTML = '';
+}
+
+/* 统一事件委托：点击「查看详情」打开；点关闭按钮或遮罩层关闭；Esc 关闭 */
+document.addEventListener('click', function (e) {
+  const link = e.target.closest && e.target.closest('.detail-link');
+  if (link) { openDetail(link.dataset.idx); return; }
+  if (!modal.classList.contains('show')) return;
+  if (e.target.closest('[data-close]') || e.target === modal) { closeDetail(); }
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && modal.classList.contains('show')) { closeDetail(); }
+});
+
+renderTable();
+renderToday();
+initTabs();
+</script>
+</body>
+</html>

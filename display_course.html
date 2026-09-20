@@ -60,6 +60,91 @@
     overflow: auto;
     padding: 4px;
   }
+  /* Tab1 布局：左表格 + 右侧时间控制组件 */
+  .schedule-layout {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .schedule-layout .table-box { flex: 1 1 auto; min-width: 0; }
+  /* 时间控制组件 */
+  .date-ctl {
+    flex: 0 0 186px;
+    width: 186px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 14px rgba(31,39,51,.08);
+    padding: 14px 14px 12px;
+    position: sticky;
+    top: 16px;
+  }
+  .dc-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #2f4a86;
+    margin-bottom: 4px;
+  }
+  .dc-cur {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f2733;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 10px;
+    letter-spacing: .2px;
+  }
+  .dc-cur .dc-wk { font-size: 12px; font-weight: 500; color: #6b7688; margin-left: 2px; }
+  .dc-input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 12.5px;
+    color: #1f2733;
+    padding: 6px 8px;
+    border: 1px solid #d8dfea;
+    border-radius: 8px;
+    background: #fbfcfe;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+  .dc-input:focus { outline: none; border-color: #3b6ee6; box-shadow: 0 0 0 3px rgba(59,110,230,.12); }
+  .dc-row { display: flex; gap: 8px; margin-top: 8px; }
+  .dc-btn {
+    flex: 1 1 0;
+    appearance: none;
+    font-family: inherit;
+    font-size: 12.5px;
+    color: #2f4a86;
+    background: #eef3fd;
+    border: 1px solid #dbe4f6;
+    border-radius: 8px;
+    padding: 7px 0;
+    cursor: pointer;
+    transition: background .16s, border-color .16s;
+    white-space: nowrap;
+  }
+  .dc-btn:hover { background: #e2ebfc; border-color: #c6d6f5; }
+  .dc-btn:active { background: #d8e4fa; }
+  .dc-btn--today {
+    width: 100%;
+    margin-top: 8px;
+    color: #fff;
+    background: #3b6ee6;
+    border-color: #3b6ee6;
+    font-weight: 600;
+  }
+  .dc-btn--today:hover { background: #2f5fd4; border-color: #2f5fd4; }
+  .dc-btn--today:active { background: #2952bd; }
+  .dc-tip {
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px dashed #e4e9f2;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #8a93a6;
+  }
+  @media (max-width: 980px) {
+    .schedule-layout { flex-direction: column; }
+    .date-ctl { position: static; width: 100%; flex: 1 1 auto; }
+  }
   table {
     border-collapse: collapse;
     width: 100%;
@@ -328,15 +413,30 @@
   </div>
 
   <div class="panel active" id="panel-schedule">
-    <div class="table-box">
-      <table id="schedule-table">
-        <thead>
-          <tr id="head-row">
-            <th class="corner"></th>
-          </tr>
-        </thead>
-        <tbody id="schedule-body"></tbody>
-      </table>
+    <div class="schedule-layout">
+      <div class="table-box">
+        <table id="schedule-table">
+          <thead>
+            <tr id="head-row">
+              <th class="corner"></th>
+            </tr>
+          </thead>
+          <tbody id="schedule-body"></tbody>
+        </table>
+      </div>
+
+      <!-- 时间控制组件：修改课表当前日期，表头随之联动刷新 -->
+      <aside class="date-ctl" id="date-ctl">
+        <div class="dc-title">课表当前日期</div>
+        <div class="dc-cur" id="dc-cur"></div>
+        <input type="date" class="dc-input" id="dc-input" aria-label="选择课表当前日期">
+        <div class="dc-row">
+          <button type="button" class="dc-btn" id="dc-prev" title="往前一周">上一周</button>
+          <button type="button" class="dc-btn" id="dc-next" title="往后一周">下一周</button>
+        </div>
+        <button type="button" class="dc-btn dc-btn--today" id="dc-today">今天</button>
+        <div class="dc-tip">修改日期后，表头月份与本周一~周日日期将同步刷新。</div>
+      </aside>
     </div>
   </div>
 
@@ -436,11 +536,33 @@ function weekText(weeks) {
 function rangeCN(r) { return fmtCN(r.start) + '-' + fmtCN(r.end); }
 function rangeFull(r) { return fmtFull(r.start) + '-' + fmtFull(r.end); }
 
+/* ===== 页面打开时的本地时间基准 =====
+   打开网页时读取一次本地时间戳 Date.now()（毫秒数），解析为日期时间（本地时区），
+   得到两个零点基准：
+   - TODAY   = 真实当天（用于课程时间段的着色，全程不变）
+   - CURRENT = 课表当前日期（由右侧时间控制组件修改，驱动表头月份与本周日期；
+               初始值即打开页面时本地时间戳解析出的当天）
+   两者互不影响，保证「改日期只动表头，课程时间段着色仍按真实当天」。 */
+const OPEN_TS = Date.now();
+const OPEN_AT = new Date(OPEN_TS);
+const TODAY = new Date(OPEN_AT.getFullYear(), OPEN_AT.getMonth(), OPEN_AT.getDate());
+let CURRENT = new Date(OPEN_AT.getFullYear(), OPEN_AT.getMonth(), OPEN_AT.getDate());
+
+/* 由本地时间戳解析结果推算所在自然周的周一（周一为一周首日） */
+function weekMondayOf(d) {
+  const offset = (d.getDay() + 6) % 7;   // Mon=0 ... Sun=6
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset);
+}
+
+/* 本地日期 -> <input type="date"> 的 yyyy-mm-dd */
+function toInputValue(d) {
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+
 /* 时间段状态（按当前日期，含首尾）：
    now    = 当前日期落在区间内        -> 绿色
    past   = 区间结束日早于今天        -> 灰色 + 删除线
    future = 区间起始日晚于今天        -> 灰色（无删除线） */
-const TODAY = (function () { const t = new Date(); t.setHours(0, 0, 0, 0); return t; })();
 function rangeStatus(r) {
   if (TODAY >= r.start && TODAY <= r.end) return 'now';
   if (r.end < TODAY) return 'past';
@@ -453,23 +575,35 @@ function escapeHtml(s) {
 }
 
 /* ================= Tab 1：课程表 ================= */
-function renderTable() {
+
+/* 表头：左上角月份 + 本周一~周日日期
+   基准 = 课表当前日期 CURRENT（可被右侧时间控制组件修改）；
+   着色规则：已过灰色+删除线 / 当天绿色 / 未到灰色 */
+function renderHeader() {
   const headRow = document.getElementById('head-row');
-  // 左上角：当前月份（YYYY年MM月），按打开页面当天动态计算
+  // 左上角：课表当前日期所在月份（YYYY年MM月）
   const corner = headRow.querySelector('th.corner');
-  if (corner) corner.textContent = TODAY.getFullYear() + '年' + pad2(TODAY.getMonth() + 1) + '月';
-  // 本周周一（含当天所在自然周）
-  const weekMon = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() - ((TODAY.getDay() + 6) % 7));
+  if (corner) corner.textContent = CURRENT.getFullYear() + '年' + pad2(CURRENT.getMonth() + 1) + '月';
+  // 清除上一次渲染的星期单元格（仅保留左上角），支持反复刷新
+  headRow.querySelectorAll('th.hd-day').forEach(el => el.remove());
+  // 本周周一（课表当前日期所在自然周）
+  const weekMon = weekMondayOf(CURRENT);
   DAYS.forEach((d, i) => {
     const th = document.createElement('th');
     th.className = 'hd-day';
     const dt = new Date(weekMon.getFullYear(), weekMon.getMonth(), weekMon.getDate() + i);
-    const cls = dt.getTime() === TODAY.getTime() ? 'st-now' : (dt < TODAY ? 'st-past' : 'st-future');
+    const cls = dt.getTime() === CURRENT.getTime() ? 'st-now' : (dt < CURRENT ? 'st-past' : 'st-future');
     th.innerHTML =
       '<div class="hd-wk">' + d + '</div>' +
       '<div class="hd-dt ' + cls + '">' + pad2(dt.getMonth() + 1) + '月' + pad2(dt.getDate()) + '日</div>';
     headRow.appendChild(th);
   });
+}
+
+/* 表体：节次列 + 11 节 x 7 天课程网格（内容与课表当前日期无关） */
+function renderBody() {
+  const tbody = document.getElementById('schedule-body');
+  tbody.innerHTML = '';
 
   // 构建 11 节 x 7 天 网格
   const grid = Array.from({ length: SECTION_COUNT }, () => new Array(DAYS.length).fill(null));
@@ -484,7 +618,6 @@ function renderTable() {
     });
   });
 
-  const tbody = document.getElementById('schedule-body');
   grid.forEach((row, r) => {
     const tr = document.createElement('tr');
     const th = document.createElement('th');
@@ -525,6 +658,63 @@ function renderTable() {
 
     tbody.appendChild(tr);
   });
+}
+
+/* 完整渲染 Tab1：表头 + 表体 */
+function renderTable() {
+  renderHeader();
+  renderBody();
+}
+
+/* ================= 时间控制组件（Tab1 右侧） ================= */
+const WEEK_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/* 同步组件自身显示（当前日期文本 + 日期选择框值） */
+function syncDateCtl() {
+  const cur = document.getElementById('dc-cur');
+  if (cur) {
+    cur.innerHTML = CURRENT.getFullYear() + '年' + pad2(CURRENT.getMonth() + 1) + '月' + pad2(CURRENT.getDate()) + '日' +
+      '<span class="dc-wk">' + WEEK_CN[CURRENT.getDay()] + '</span>';
+  }
+  const input = document.getElementById('dc-input');
+  if (input && input.value !== toInputValue(CURRENT)) input.value = toInputValue(CURRENT);
+}
+
+/* 设定课表当前日期（只驱动表头，不影响课程时间段着色） */
+function setCurrentDate(d) {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return;
+  CURRENT = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  renderHeader();
+  syncDateCtl();
+}
+
+/* 上一周 / 下一周 */
+function shiftWeek(deltaWeeks) {
+  setCurrentDate(new Date(CURRENT.getFullYear(), CURRENT.getMonth(), CURRENT.getDate() + deltaWeeks * 7));
+}
+
+/* 复位为打开页面时本地时间戳解析出的当天 */
+function resetToOpenDay() {
+  setCurrentDate(new Date(OPEN_AT.getFullYear(), OPEN_AT.getMonth(), OPEN_AT.getDate()));
+}
+
+function initDateCtl() {
+  const input = document.getElementById('dc-input');
+  if (input) {
+    input.value = toInputValue(CURRENT);   // 初始值 = 打开页面时本地时间戳解析结果
+    input.addEventListener('change', function () {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(this.value || '');
+      if (!m) return;
+      setCurrentDate(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    });
+  }
+  const prev = document.getElementById('dc-prev');
+  if (prev) prev.addEventListener('click', function () { shiftWeek(-1); });
+  const next = document.getElementById('dc-next');
+  if (next) next.addEventListener('click', function () { shiftWeek(1); });
+  const today = document.getElementById('dc-today');
+  if (today) today.addEventListener('click', resetToOpenDay);
+  syncDateCtl();
 }
 
 /* ================= Tab 2：当日课程表 ================= */
@@ -676,6 +866,7 @@ document.addEventListener('keydown', function (e) {
 });
 
 renderTable();
+initDateCtl();
 renderToday();
 initTabs();
 </script>
